@@ -6,6 +6,10 @@ Up to 10 simulated drones share one map, the same waypoints and one cruise altit
 
 The decision model is a black box reached over HTTP. The default client targets the Jev gateway; a built-in mock lets you run everything offline.
 
+![Dashboard: five seconds of live decisions](docs/dashboard.gif)
+
+*Five seconds of a real run: each drone gets a Jev proposal (CONTINUE, SLOW_FOR_TRAFFIC, CHANGE_LEVEL, RETURN_HOME, ...), a safety check, and the executed action.*
+
 Not a flight controller: the physics is a simplified kinematic model and the thresholds are demo values.
 
 ## Requirements
