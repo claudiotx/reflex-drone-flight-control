@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drone Mission Supervisor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#05070d; --glass:rgba(16,22,38,.62); --glass2:rgba(24,32,54,.55); --line:rgba(120,150,255,.16);
+    --text:#e8eeff; --muted:#7f8db3; --ok:#2dffa0; --warn:#ffc53d; --bad:#ff4d6d; --info:#4cc2ff; --violet:#9b6bff;
+    --glow:0 0 24px rgba(76,194,255,.25);
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    margin:0; color:var(--text); font:14px/1.45 Inter,-apple-system,system-ui,sans-serif; background:var(--bg);
+    background-image:
+      radial-gradient(900px 500px at 12% -10%, rgba(76,194,255,.16), transparent 60%),
+      radial-gradient(800px 500px at 100% 0%, rgba(155,107,255,.16), transparent 60%),
+      radial-gradient(700px 500px at 50% 120%, rgba(45,255,160,.07), transparent 60%);
+    background-attachment:fixed;
+  }
+  body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.35;
+    background-image:linear-gradient(var(--line) 1px, transparent 1px),linear-gradient(90deg,var(--line) 1px, transparent 1px);
+    background-size:48px 48px; mask-image:radial-gradient(ellipse at 50% 0%, #000 0%, transparent 75%); }
+  header { position:relative; padding:14px 22px; display:flex; flex-wrap:wrap; gap:12px; align-items:center;
+    border-bottom:1px solid var(--line); backdrop-filter:blur(14px); background:rgba(5,7,13,.55); }
+  .logo { width:34px; height:34px; border-radius:10px; display:grid; place-items:center;
+    background:linear-gradient(135deg,var(--info),var(--violet)); box-shadow:0 0 22px rgba(76,194,255,.55); }
+  .logo svg { width:20px; height:20px; }
+  header h1 { font-size:18px; font-weight:800; letter-spacing:-.01em; margin:0 10px 0 0;
+    background:linear-gradient(90deg,#fff,#9fc9ff 60%,#c2a8ff); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  header h1 small { display:block; font-size:10px; font-weight:600; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); -webkit-text-fill-color:var(--muted); }
+  .spacer { flex:1; }
+  .badge { padding:4px 11px; border-radius:99px; border:1px solid var(--line); font-size:11px; font-weight:700; letter-spacing:.06em;
+    background:rgba(255,255,255,.03); display:inline-flex; align-items:center; gap:7px; }
+  .badge::before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor; box-shadow:0 0 10px currentColor; animation:blink 1.6s infinite; }
+  .b-ok{color:var(--ok);border-color:rgba(45,255,160,.4)} .b-warn{color:var(--warn);border-color:rgba(255,197,61,.45)}
+  .b-bad{color:var(--bad);border-color:rgba(255,77,109,.5)} .b-info{color:var(--info);border-color:rgba(76,194,255,.45)}
+  @keyframes blink { 50%{opacity:.35} }
+  .banner { width:100%; font-size:11px; color:var(--muted); letter-spacing:.02em; }
+  main { position:relative; display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); gap:16px; padding:16px 22px 28px; }
+  @media (max-width:1000px){ main{grid-template-columns:1fr;} }
+  .col { display:grid; gap:16px; align-content:start; min-width:0; }
+  .panel { position:relative; background:var(--glass); border:1px solid var(--line); border-radius:18px; padding:14px 16px;
+    backdrop-filter:blur(16px); box-shadow:0 10px 40px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.05); }
+  .panel h2 { display:flex; align-items:center; gap:8px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.16em; color:var(--muted); margin:0 0 12px; }
+  .panel h2::before { content:""; width:14px; height:2px; border-radius:2px; background:linear-gradient(90deg,var(--info),var(--violet)); }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  button { background:rgba(255,255,255,.04); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:7px 13px;
+    cursor:pointer; font:600 12px Inter,sans-serif; transition:.18s; }
+  button:hover:not(:disabled) { border-color:var(--info); box-shadow:0 0 16px rgba(76,194,255,.3); transform:translateY(-1px); }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  button.primary { background:linear-gradient(135deg,#1aa6ff,#7a5cff); border:0; color:#fff; box-shadow:0 6px 22px rgba(90,110,255,.45); }
+  button.primary:hover:not(:disabled) { box-shadow:0 8px 30px rgba(110,120,255,.7); }
+  button.danger { color:var(--warn); border-color:rgba(255,197,61,.35); }
+  button.sel { border-color:var(--info); background:rgba(76,194,255,.14); box-shadow:0 0 16px rgba(76,194,255,.3) inset; }
+
+  /* map */
+  .mapwrap { position:relative; border-radius:14px; overflow:hidden; border:1px solid var(--line);
+    background:radial-gradient(ellipse at 50% 40%, #0b1730, #050914); }
+  svg#map { width:100%; height:auto; display:block; }
+  .hud { position:absolute; left:12px; top:10px; font:600 10px 'JetBrains Mono',monospace; color:var(--info); letter-spacing:.1em; opacity:.85; pointer-events:none; }
+  .hud b { color:#fff; }
+  .scan { position:absolute; inset:0; pointer-events:none; background:linear-gradient(180deg,transparent 0,rgba(76,194,255,.07) 50%,transparent 100%);
+    height:30%; animation:scan 6s linear infinite; }
+  @keyframes scan { from{transform:translateY(-100%)} to{transform:translateY(400%)} }
+  .flow { stroke-dasharray:5 5; animation:flow 1.2s linear infinite; }
+  @keyframes flow { to{stroke-dashoffset:-20} }
+  .pulse { animation:pulse 1.1s ease-in-out infinite; transform-box:fill-box; transform-origin:center; }
+  @keyframes pulse { 50%{opacity:.35} }
+  .dr { transition:transform .25s linear; }
+  .rotor { transform-box:fill-box; transform-origin:center; animation:spin .25s linear infinite; }
+  .rotor.idle { animation-duration:3s; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  .ring { transform-box:fill-box; transform-origin:center; animation:ring 2s ease-out infinite; }
+  @keyframes ring { from{transform:scale(.6);opacity:.9} to{transform:scale(2.4);opacity:0} }
+
+  /* fleet cards */
+  .fleet { display:grid; grid-template-columns:repeat(auto-fit,minmax(138px,1fr)); gap:10px; margin-top:14px; }
+  .card { --c:#4cc2ff; position:relative; text-align:left; padding:10px 12px; border-radius:14px; border:1px solid var(--line); background:var(--glass2);
+    cursor:pointer; transition:.2s; overflow:hidden; }
+  .card::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--c); box-shadow:0 0 14px var(--c); }
+  .card:hover { transform:translateY(-2px); border-color:var(--c); }
+  .card.sel { border-color:var(--c); box-shadow:0 0 24px color-mix(in srgb, var(--c) 40%, transparent), inset 0 0 30px color-mix(in srgb, var(--c) 12%, transparent); }
+  .card .nm { font-weight:800; font-size:15px; display:flex; justify-content:space-between; align-items:center; }
+  .card .md { font:600 10px 'JetBrains Mono',monospace; letter-spacing:.06em; color:var(--c); margin-top:2px; }
+  .card .ai { font-size:9px; padding:1px 6px; border-radius:99px; border:1px solid currentColor; }
+  .mini { height:5px; border-radius:3px; background:rgba(255,255,255,.08); margin-top:8px; overflow:hidden; }
+  .mini > i { display:block; height:100%; border-radius:3px; transition:width .3s, background .3s; }
+  .card .bt { font:600 11px 'JetBrains Mono',monospace; color:var(--muted); margin-top:4px; display:flex; justify-content:space-between; }
+
+  /* telemetry */
+  .telemetry { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:14px; }
+  @media (max-width:600px){ .telemetry{grid-template-columns:repeat(2,1fr);} }
+  .tile { padding:11px 12px; border-radius:14px; background:var(--glass2); border:1px solid var(--line); }
+  .tile .v { font:700 26px 'JetBrains Mono',monospace; letter-spacing:-.02em; line-height:1.1; }
+  .tile .u { font-size:11px; color:var(--muted); font-weight:500; margin-left:3px; }
+  .tile .k { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.12em; margin-top:3px; }
+  .bar { height:6px; background:rgba(255,255,255,.08); border-radius:4px; position:relative; margin-top:8px; overflow:hidden; }
+  .bar > i { position:absolute; inset:0 auto 0 0; background:var(--ok); border-radius:4px; transition:width .3s; box-shadow:0 0 10px currentColor; }
+
+  /* decision chain */
+  .chain { display:grid; grid-template-columns:1fr 26px 1fr 26px 1fr; gap:4px; align-items:stretch; }
+  @media (max-width:1250px){ .chain{grid-template-columns:1fr; } .chain .arrow{transform:rotate(90deg); justify-self:center;} }
+  .chain .arrow { align-self:center; color:var(--info); font-size:18px; text-align:center; text-shadow:0 0 12px var(--info); animation:nudge 1.2s ease-in-out infinite; }
+  @keyframes nudge { 50%{transform:translateX(4px);opacity:.6} }
+  .step { --sc:var(--info); position:relative; border:1px solid color-mix(in srgb, var(--sc) 40%, transparent); border-radius:14px; padding:10px 11px; min-height:110px;
+    background:linear-gradient(160deg,color-mix(in srgb, var(--sc) 14%, transparent),rgba(255,255,255,.015)); animation:pop .35s ease-out; }
+  @keyframes pop { from{transform:scale(.96);opacity:.4} }
+  .step .t { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.12em; font-weight:700; }
+  .step .big { font:700 15px 'JetBrains Mono',monospace; margin:6px 0 4px; color:var(--sc); text-shadow:0 0 16px color-mix(in srgb, var(--sc) 60%, transparent); word-break:break-word; }
+  .step small { color:var(--muted); display:block; font-size:11px; }
+  .step.ov { --sc:var(--bad); } .step.fb { --sc:var(--warn); } .step.ok { --sc:var(--ok); }
+  .step.wait { --sc:var(--muted); }
+  .assess { margin-top:12px; font-size:12px; color:var(--muted); display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { padding:4px 10px; border-radius:99px; background:rgba(255,255,255,.05); border:1px solid var(--line); font:600 11px 'JetBrains Mono',monospace; color:var(--text); }
+  .chip b { color:var(--info); }
+
+  /* log */
+  #log { height:300px; overflow:auto; font:11.5px/1.5 'JetBrains Mono',monospace; padding-right:4px; }
+  #log::-webkit-scrollbar { width:6px } #log::-webkit-scrollbar-thumb { background:var(--line); border-radius:3px }
+  #log div { padding:4px 0; border-bottom:1px dashed rgba(120,150,255,.1); animation:fadein .4s; }
+  @keyframes fadein { from{opacity:0;transform:translateX(-6px)} }
+  #log .ts { color:var(--muted); }
+  .tag { display:inline-block; min-width:62px; text-align:center; font-weight:700; font-size:10px; padding:1px 6px; border-radius:6px; margin:0 4px; background:rgba(255,255,255,.06); }
+  .k-CRASH{color:#fff;background:var(--bad);border-radius:4px} .k-SAFETY{color:var(--bad)} .k-FALLBACK{color:var(--warn)} .k-JEV{color:var(--info)} .k-OPERATOR{color:var(--violet)} .k-STATE{color:var(--muted)}
+  .stale { opacity:.4; filter:grayscale(.6); transition:.3s; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="5" r="2.5"/><circle cx="19" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><path d="M7 7l10 10M17 7L7 17"/></svg></div>
+  <h1>Drone Mission Supervisor<small>Jev · autonomous fleet control</small></h1>
+  <span id="b-jev" class="badge">JEV</span>
+  <span id="b-ctl" class="badge">CONTROL</span>
+  <span id="b-mode" class="badge">MODE</span>
+  <span class="spacer"></span>
+  <span id="b-conn" class="badge b-ok">connected</span>
+  <div class="banner">Simplified simulation — AI mission supervision, not flight stabilization.</div>
+</header>
+<main>
+  <div class="col">
+    <section class="panel">
+      <h2>Live tactical map</h2>
+      <div class="mapwrap">
+        <svg id="map" viewBox="0 0 400 300">
+          <defs>
+            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20 0H0V20" fill="none" stroke="#4cc2ff" stroke-opacity=".09" stroke-width=".5"/></pattern>
+            <pattern id="grid2" width="100" height="100" patternUnits="userSpaceOnUse"><path d="M100 0H0V100" fill="none" stroke="#4cc2ff" stroke-opacity=".18" stroke-width=".6"/></pattern>
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <radialGradient id="sens"><stop offset="0" stop-color="#ff4d6d" stop-opacity=".0"/><stop offset=".8" stop-color="#ff4d6d" stop-opacity=".05"/><stop offset="1" stop-color="#ff4d6d" stop-opacity=".25"/></radialGradient>
+          </defs>
+          <rect width="400" height="300" fill="url(#grid)"/><rect width="400" height="300" fill="url(#grid2)"/>
+          <g id="routes"></g><g id="obst"></g><g id="wps"></g><g id="trails"></g><g id="drones"></g>
+        </svg>
+        <div class="scan"></div>
+        <div class="hud" id="hud">SECTOR 7 · <b>T+0s</b></div>
+      </div>
+      <div class="fleet" id="fleet"></div>
+      <div class="telemetry">
+        <div class="tile"><div class="v"><span id="t-bat">–</span><span class="u">%</span></div><div class="k">Battery</div><div class="bar"><i id="t-barfill"></i></div></div>
+        <div class="tile"><div class="v"><span id="t-speed">–</span><span class="u">m/s</span></div><div class="k">Speed</div></div>
+        <div class="tile"><div class="v"><span id="t-alt">–</span><span class="u">m</span></div><div class="k">Altitude (rel. home)</div></div>
+        <div class="tile"><div class="v" id="t-state" style="font-size:19px;padding-top:5px">–</div><div class="k" id="t-target">State</div></div>
+      </div>
+    </section>
+  </div>
+  <div class="col">
+    <section class="panel">
+      <h2>Mission control</h2>
+      <div class="controls" id="scenarios"></div>
+      <div class="controls" style="margin-top:12px">
+        <button class="primary" id="start">▶ Start mission</button>
+        <button id="reset">↺ Reset</button>
+        <button class="danger" id="op-hold">✋ Operator hold</button>
+        <button id="op-resume">🤖 Resume AI</button>
+        <button id="loop">🔁 Loop: off</button>
+        <button id="backstop">🛡 Backstop: on</button>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Run metrics <span id="rec" style="font-weight:500;opacity:.6"></span></h2>
+      <div id="metrics" style="font:600 11px 'JetBrains Mono',monospace;line-height:1.7;color:var(--muted)"></div>
+    </section>
+    <section class="panel">
+      <h2>Jev proposal → safety check → executed</h2>
+      <div class="chain" id="chain"></div>
+      <div class="assess" id="assess"></div>
+    </section>
+    <section class="panel">
+      <h2>Event log</h2>
+      <div id="log"></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const NS = 'http://www.w3.org/2000/svg';
+let backstopOn = true, loopOn = false, scenario = 'clear', inflight = false, builtScenarios = false, sel = 'D1', staticBuilt = false;
+const COLORS = ['#ffb04d','#c58bff','#37e6f0','#ff6b9d','#7dff6b','#ffe14d','#4da6ff','#ff7a4d','#b0ff4d','#ff4dd2'];
+const view = {};
+const last = {};
+function setHTML(id, html) { if (last[id] !== html) { last[id] = html; $(id).innerHTML = html; return true; } return false; }   // per-drone persistent svg state
+
+async function post(path, body) {
+  await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{})});
+  poll();
+}
+$('start').onclick = () => post('/api/start');
+$('backstop').onclick = () => post('/api/backstop', {enabled: !backstopOn});
+$('loop').onclick = () => post('/api/loop', {enabled: !loopOn});
+$('reset').onclick = () => post('/api/reset', {scenario});
+$('op-hold').onclick = () => post('/api/operator', {action:'hold', drone:sel});
+$('op-resume').onclick = () => post('/api/operator', {action:'resume', drone:sel});
+
+const pts = (list, P) => list.map(n => P[n].join(',')).join(' ');
+const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+
+const routeEls = {};
+function buildStatic(m) {
+  const routes = $('routes'), w = $('wps'), o = $('obst');
+  // gusty wind zone
+  const [wx0, wy0, wx1, wy1] = m.wind.zone;
+  const wg = el('g', {id:'windg'}, routes);
+  el('rect', {x:wx0, y:wy0, width:wx1-wx0, height:wy1-wy0, rx:6, fill:'#ffc53d', 'fill-opacity':.05, stroke:'#ffc53d', 'stroke-opacity':.4, 'stroke-dasharray':'3 4', 'stroke-width':.8}, wg);
+  const wt = el('text', {x:wx0+6, y:wy0+11, fill:'#ffc53d', 'font-size':7.5, 'font-weight':700, 'letter-spacing':1.5, opacity:.8}, wg); wt.textContent = '≋ GUSTS';
+  // approved landing sites
+  for (const [n, [x, y]] of Object.entries(m.sites)) {
+    el('circle', {cx:x, cy:y, r:8, fill:'none', stroke:'#2dffa0', 'stroke-width':1, 'stroke-dasharray':'2 2'}, w);
+    const h = el('text', {x:x, y:y+3, fill:'#2dffa0', 'font-size':9, 'font-weight':800, 'text-anchor':'middle'}, w); h.textContent = 'H';
+    const t = el('text', {x:x, y:y+20, fill:'#2dffa0', 'font-size':7, 'text-anchor':'middle', 'font-family':'JetBrains Mono,monospace', opacity:.8}, w); t.textContent = n;
+  }
+  // shared waypoints, drawn once for the whole fleet
+  for (const [n, [x, y]] of Object.entries(m.waypoints)) {
+    el('circle', {cx:x, cy:y, r:4.5, fill:'#050914', stroke:'#e8eeff', 'stroke-width':1.4, filter:'url(#glow)'}, w);
+    const tx = el('text', {x:x+7, y:y-5, fill:'#e8eeff', 'font-size':7.5, 'font-weight':700, 'font-family':'JetBrains Mono,monospace', opacity:.85}, w); tx.textContent = n;
+  }
+  Object.entries(m.drones).forEach(([name, g], i) => {
+    const P = g.points, c = COLORS[i % COLORS.length], R = routeEls[name] = {};
+    const pl = (list, attrs) => el('polyline', {points: list.map(n => P[n].join(',')).join(' '), fill:'none', 'stroke-width':1.3, ...attrs}, routes);
+    R.MAIN = pl(g.main_plan, {stroke:c, class:'flow'});
+    el('line', {x1:g.home[0], y1:g.home[1], x2:P[g.main_plan[0]][0], y2:P[g.main_plan[0]][1], stroke:c, 'stroke-width':1, 'stroke-dasharray':'2 4', opacity:.3}, routes);
+    const [c0, c1] = g.corridor;
+    Object.entries(g.alts).forEach(([act, via], k) => {
+      R[act] = pl([c0, ...via, c1], {stroke:c, 'stroke-dasharray': k ? '1 4' : '6 3', 'stroke-linecap':'round'});
+      const [lx, ly] = P[via[0]];
+      const t = el('text', {x:lx+6, y:ly+3, fill:c, 'font-size':7, 'font-family':'JetBrains Mono,monospace', opacity:.8, class:'altlbl', 'data-d':name}, routes); t.textContent = 'ALT' + (k+1);
+    });
+    // per-drone obstruction on its corridor leg
+    const [a0, a1] = [P[c0], P[c1]];
+    const og = el('g', {id:'obst-'+name}, o); og.style.display = 'none';
+    el('line', {x1:a0[0], y1:a0[1], x2:a1[0], y2:a1[1], stroke:'#ff4d6d', 'stroke-width':10, opacity:.22, class:'pulse'}, og);
+    el('line', {x1:a0[0], y1:a0[1], x2:a1[0], y2:a1[1], stroke:'#ff4d6d', 'stroke-width':3, 'stroke-dasharray':'5 3', filter:'url(#glow)', class:'pulse'}, og);
+    const ot = el('text', {x:(a0[0]+a1[0])/2+8, y:(a0[1]+a1[1])/2, fill:'#ff4d6d', 'font-size':7, 'font-weight':800, 'letter-spacing':1, filter:'url(#glow)'}, og); ot.textContent = '⚠ BLOCKED';
+    for (const [n, [x, y]] of Object.entries(P)) if (n[0] === 'A')
+      el('rect', {x:x-2.5, y:y-2.5, width:5, height:5, transform:`rotate(45 ${x} ${y})`, fill:'none', stroke:c, 'stroke-width':1, opacity:.7}, w);
+  });
+}
+
+function makeDrone(id, color, home) {
+  const trail = el('polyline', {fill:'none', stroke:color, 'stroke-linecap':'round', 'stroke-linejoin':'round'}, $('trails'));
+  const pad = el('g', {}, $('wps'));
+  el('rect', {x:home[0]-6, y:home[1]-6, width:12, height:12, rx:3, fill:'none', stroke:color, 'stroke-opacity':.6, 'stroke-width':1}, pad);
+  const pt = el('text', {x:home[0], y:home[1]+17, fill:color, 'font-size':7.5, 'text-anchor':'middle', 'font-family':'JetBrains Mono,monospace', 'font-weight':700, opacity:.8}, pad); pt.textContent = id;
+  const g = el('g', {class:'dr'}, $('drones'));
+  const ring = el('circle', {r:9, fill:'none', stroke:color, 'stroke-width':1, class:'ring'}, g);
+  const halo = el('circle', {r:13, fill:'none', stroke:color, 'stroke-width':1.2, 'stroke-dasharray':'3 3', opacity:0}, g);
+  const body = el('g', {filter:'url(#glow)'}, g);
+  for (const [dx,dy] of [[-6,-6],[6,-6],[-6,6],[6,6]]) {
+    el('line', {x1:0, y1:0, x2:dx, y2:dy, stroke:color, 'stroke-width':1.4}, body);
+    const r = el('g', {transform:`translate(${dx} ${dy})`}, body);
+    const rr = el('ellipse', {rx:4, ry:1.3, fill:color, opacity:.85, class:'rotor'}, r);
+  }
+  el('circle', {r:3, fill:'#fff'}, body);
+  el('circle', {r:1.6, fill:color}, body);
+  const lab = el('text', {y:-12, fill:color, 'font-size':8, 'text-anchor':'middle', 'font-weight':800, 'font-family':'JetBrains Mono,monospace', filter:'url(#glow)'}, g);
+  return {trail, g, ring, halo, lab, body};
+}
+
+function drawMap(s) {
+  const m = s.map;
+  if (!staticBuilt) { buildStatic(m); staticBuilt = true; }
+  $('windg').style.display = m.wind.active ? '' : 'none';
+  document.querySelectorAll('.altlbl').forEach(t => t.style.display = t.dataset.d === sel ? '' : 'none');
+  s.drones.forEach((dr, i) => {
+    const d = dr.sim, c = COLORS[i % COLORS.length], on = d.id === sel;
+    $('obst-' + d.id).style.display = d.obstruction_active ? '' : 'none';
+    const R = routeEls[d.id], alt = d.route !== 'MAIN';
+    R.MAIN.setAttribute('opacity', on ? (alt ? .3 : .85) : .3);
+    for (const k of Object.keys(R)) if (k.startsWith('USE_')) R[k].setAttribute('opacity', d.route === k.slice(4) ? 1 : (on ? .55 : .15));
+    const v = view[d.id] || (view[d.id] = makeDrone(d.id, c, d.home));
+    v.trail.setAttribute('points', d.track.map(p => p.join(',')).join(' '));
+    v.trail.setAttribute('stroke-width', on ? 2 : 1.1);
+    v.trail.setAttribute('opacity', on ? .9 : .4);
+    if (on) v.trail.setAttribute('filter', 'url(#glow)'); else v.trail.removeAttribute('filter');
+    const parked = d.mode === 'LANDED' || d.mode === 'CHARGING', crashed = d.mode === 'CRASHED';
+    const atHome = Math.hypot(d.pos[0]-d.home[0], d.pos[1]-d.home[1]) < 1;
+    v.g.style.display = (d.mode === 'IDLE' && atHome) ? 'none' : '';
+    v.g.style.opacity = parked ? .6 : 1;
+    v.ring.style.display = (parked || crashed) ? 'none' : '';
+    v.g.style.transform = `translate(${d.pos[0]}px,${d.pos[1]}px)`;
+    v.halo.setAttribute('opacity', on ? .8 : 0);
+    v.lab.textContent = (crashed ? '✖ ' : d.mode === 'CHARGING' ? '⚡ ' : '') + d.id + (d.route !== 'MAIN' ? ' ↷' : '') + (d.yielding ? ' ⇡' : '');
+    v.lab.setAttribute('fill', crashed ? '#ff4d6d' : c);
+    v.body.querySelectorAll('.rotor').forEach(r => r.classList.toggle('idle', d.speed === 0 && d.alt === 0));
+  });
+  const t = s.drones.reduce((a, x) => Math.max(a, x.sim.t || 0), 0);
+  $('hud').innerHTML = `SECTOR 7 · <b>${s.drones.filter(x => !['IDLE','LANDED','CHARGING','CRASHED'].includes(x.sim.mode)).length}</b> AIRBORNE · ${s.scenarios[s.scenario] || ''}`;
+}
+
+function cls(v) { return {ACCEPTED:'ok', OVERRIDDEN:'ov', REJECTED:'ov', FALLBACK:'fb'}[v] || ''; }
+
+function drawDecision(dr) {
+  const d = dr.decisions[0], pend = dr.jev.pending;
+  if (!d) { setHTML('chain', `<div class="step wait" style="grid-column:1/-1;min-height:70px"><div class="t">${dr.sim.id}</div><div class="big">${pend ? 'Waiting for Jev…' : 'Standing by'}</div><small>${pend ? '' : 'No decisions yet. Start the mission.'}</small></div>`); setHTML('assess',''); return; }
+  const p = d.proposal;
+  const prop = p ? `<div class="big">${p.choice}</div><small>latency ${p.latency}s</small>` :
+    `<div class="big">no proposal</div><small>${d.error||''}</small>`;
+  setHTML('chain', `
+    <div class="step ${p?'':'fb'}"><div class="t">${dr.sim.id} · 1 · Jev proposal ${pend?'<span style="color:var(--info)">· next in flight…</span>':''}</div>${prop}</div>
+    <div class="arrow">➜</div>
+    <div class="step ${cls(d.verdict)}"><div class="t">2 · Safety check</div><div class="big">${d.verdict}</div><small>${d.rule?d.rule+': ':''}${d.reason}</small></div>
+    <div class="arrow">➜</div>
+    <div class="step ok"><div class="t">3 · Executed</div><div class="big">${d.executed}</div><small>source: ${d.source}</small></div>`);
+  setHTML('assess', p ? `<span class="chip">Disruption <b>${p.score.toFixed(1)}/${p.score_max}</b></span><span class="chip">Noul persistence <b>${p.noul.toFixed(2)}</b></span>${p.traffic_noul!=null?`<span class="chip">Noul traffic conflict <b>${p.traffic_noul.toFixed(2)}</b></span>`:''}<span class="chip">${p.model||'?'}</span>` : '');
+}
+
+function badge(e, text, c) { e.textContent = text; e.className = 'badge ' + c; }
+
+function render(s) {
+  const dr = s.drones.find(x => x.sim.id === sel) || s.drones[0], d = dr.sim;
+  badge($('b-jev'), s.jev.label + (dr.jev.status==='error'?' · ERROR':''), s.jev.label==='MOCK'?'b-warn':(dr.jev.status==='error'?'b-bad':'b-info'));
+  badge($('b-ctl'), dr.control, dr.control==='AI SUPERVISION'?'b-ok':'b-warn');
+  badge($('b-mode'), d.mode + (d.route!=='MAIN'?' · '+d.route.replace('_',' '):''), 'b-info');
+  if (setHTML('fleet', s.drones.map((x, i) => {
+    const q = x.sim, c = COLORS[i % COLORS.length];
+    const bc = q.battery <= s.limits.emergency ? 'var(--bad)' : q.battery <= s.limits.reserve ? 'var(--warn)' : 'var(--ok)';
+    const ai = x.control === 'AI SUPERVISION';
+    return `<div class="card ${q.id===sel?'sel':''}" data-d="${q.id}" style="--c:${c}">
+      <div class="nm">${q.id}<span class="ai" style="color:${ai?'var(--ok)':'var(--warn)'}">${ai?'AI':'MANUAL'}</span></div>
+      <div class="md">${q.waiting ? 'QUEUED' : q.blocked_stop ? 'WAIT' : q.mode}${q.route!=='MAIN'?' · '+q.route.replace('_',' '):''}${q.in_wind?' · ≋':''}</div>
+      <div class="mini"><i style="width:${Math.max(0,q.battery)}%;background:${bc};box-shadow:0 0 8px ${bc}"></i></div>
+      <div class="bt"><span>${q.battery.toFixed(0)}%</span><span>${q.speed.toFixed(0)} m/s</span></div></div>`;
+  }).join(''))) $('fleet').querySelectorAll('.card').forEach(b => b.onclick = () => { sel = b.dataset.d; poll(); });
+  $('t-bat').textContent = d.battery.toFixed(0);
+  const bf = $('t-barfill'); bf.style.width = d.battery + '%';
+  const bcol = d.battery <= s.limits.emergency ? 'var(--bad)' : d.battery <= s.limits.reserve ? 'var(--warn)' : 'var(--ok)';
+  bf.style.background = bcol; bf.style.color = bcol;
+  $('t-speed').textContent = d.speed.toFixed(1);
+  $('t-alt').textContent = d.alt.toFixed(0);
+  $('t-state').textContent = d.waiting ? 'QUEUED' : d.blocked_stop ? 'WAIT' : d.mode;
+  $('t-target').textContent = sel + ' · ' + (d.blocked_stop ? 'path blocked · ' : '') + (d.divert ? 'site: ' + d.divert + ' · ' : '') + 'next: ' + (d.target || '–') + (d.hold_remaining!=null ? ` · hold ${d.hold_remaining}s left` : '');
+  drawMap(s); drawDecision(dr);
+  setHTML('log', s.events.slice().reverse().map(e => `<div><span class="ts">${e.ts}</span><b style="color:${COLORS[(parseInt(e.drone.slice(1))-1||0)%COLORS.length]}"> ${e.drone}</b><span class="tag k-${e.kind}">${e.kind}</span>${e.msg}</div>`).join(''));
+  if (!builtScenarios) {
+    builtScenarios = true;
+    $('scenarios').innerHTML = Object.entries(s.scenarios).map(([k,l]) => `<button data-k="${k}">${l}</button>`).join('');
+    $('scenarios').querySelectorAll('button').forEach(b => b.onclick = () => { scenario = b.dataset.k; post('/api/reset', {scenario}); });
+  }
+  $('scenarios').querySelectorAll('button').forEach(b => b.classList.toggle('sel', b.dataset.k === s.scenario));
+  scenario = s.scenario;
+  $('start').disabled = s.drones.some(x => x.sim.mode !== 'IDLE' || x.sim.waiting);
+  loopOn = s.loop; $('loop').textContent = '🔁 Loop: ' + (s.loop ? 'on' : 'off'); $('loop').classList.toggle('sel', s.loop);
+  backstopOn = s.metrics.backstop.enabled; $('backstop').textContent = '🛡 Backstop: ' + (backstopOn ? 'on' : 'OFF (Jev alone)'); $('backstop').classList.toggle('sel', backstopOn);
+  const m = s.metrics, j = m.jev, f = v => v == null ? '–' : Math.round(v) + ' ms', tr = m.traffic, oc = tr.outcomes;
+  $('rec').textContent = s.recording ? '● recording ' + s.recording : '○ not recording';
+  setHTML('metrics', `Jev calls <b>${j.calls}</b> (errors ${j.errors}) · avg ${f(j.avg_ms)} · p95 ${f(j.p95_ms)} · p99 ${f(j.p99_ms)} · deadline misses ${j.deadline_misses}<br>`
+    + `laps ${Object.entries(m.laps).map(([k,v]) => k+':'+v).join(' ')} · <span style="color:${m.crashes?'var(--bad)':'inherit'}">crashes ${m.crashes}</span> · collisions ${m.collisions} · separation losses ${m.separation_losses}<br>`
+    + `threat encounters <b>${tr.threat_encounters}</b>: resolved by Jev <b style="color:var(--ok)">${oc.JEV_RESOLVED||0}</b> · backstop ${oc.BACKSTOP||0} · separation loss ${oc.SEPARATION_LOSS||0} · <span style="color:${oc.COLLISION?'var(--bad)':'inherit'}">collision ${oc.COLLISION||0}</span>`);
+}
+
+async function poll() {
+  if (inflight) return;
+  inflight = true;
+  try {
+    const r = await fetch('/api/state');
+    render(await r.json());
+    badge($('b-conn'), 'connected', 'b-ok'); document.querySelector('main').classList.remove('stale');
+  } catch (e) {
+    console.error(e);
+    badge($('b-conn'), 'backend unreachable', 'b-bad'); document.querySelector('main').classList.add('stale');
+  } finally { inflight = false; }
+}
+setInterval(poll, 250); poll();
+</script>
+</body>
+</html>
